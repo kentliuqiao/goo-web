@@ -3,6 +3,7 @@ package goo
 import (
 	"log"
 	"net/http"
+	"strings"
 )
 
 type HandlerFunc func(*Context)
@@ -30,10 +31,10 @@ func New() *Engine {
 	engine.RouterGroup = &RouterGroup{
 		engine: engine,
 	}
-	newGroup := &RouterGroup{
-		engine: engine,
-	}
-	engine.groups = append(engine.groups, newGroup)
+	// newGroup := &RouterGroup{
+	// 	engine: engine,
+	// }
+	engine.groups = []*RouterGroup{engine.RouterGroup}
 	return engine
 }
 
@@ -42,13 +43,18 @@ func New() *Engine {
 func (group *RouterGroup) Group(prefix string) *RouterGroup {
 	engine := group.engine
 	newGroup := &RouterGroup{
-		prefix: prefix,
+		prefix: group.prefix + prefix,
 		engine: engine,
 		parent: group,
 	}
 	engine.groups = append(engine.groups, newGroup)
 
 	return newGroup
+}
+
+// Use is defined to add middlewares to the group
+func (group *RouterGroup) Use(middlewares ...HandlerFunc) {
+	group.middlewares = append(group.middlewares, middlewares...)
 }
 
 func (group *RouterGroup) addRoute(method, comp string, handler HandlerFunc) {
@@ -76,6 +82,15 @@ func (engine *Engine) Run(addr string) (err error) {
 }
 
 func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// c := newContext(w, req)
+	// engine.router.handle(c)
+	var middlewares []HandlerFunc
+	for _, group := range engine.groups {
+		if strings.HasPrefix(req.URL.Path, group.prefix) {
+			middlewares = append(middlewares, group.middlewares...)
+		}
+	}
 	c := newContext(w, req)
+	c.handlers = middlewares
 	engine.router.handle(c)
 }
